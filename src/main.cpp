@@ -31,6 +31,8 @@
 #define CHILDREN_KEY "children"
 #define SCAN_TIMING_KEY "scantiming"
 
+#define BTN_PIN 43
+
 #ifdef BOARDSEED_XIAO_ESP32S3
 LGFX_XIAO_ESP32S3_SPI_ST7789B display;
 #else
@@ -65,8 +67,13 @@ SensorData OwnTemp;
 bool onled = true;
 unsigned long nextTime = 0;
 unsigned long blinkTime = 0;
+unsigned long screenSaveTime = 0;
 
-unsigned long scan_timing = 5000;
+bool isScreenSaver = false;
+
+unsigned long scan_timing = 15000;
+unsigned long screenSaver_timing = 30000;
+
 int scanIndex = 0;
 #ifdef BOARDSEED_XIAO_ESP32S3
 #define LEDPIN 21
@@ -116,7 +123,7 @@ void setupDisplay()
   scrbuf.setFont(&lgfxJapanGothic_28F);
 
   display.init();
-  display.setRotation(2);
+  display.setRotation(0);
   display.setFont(&lgfxJapanGothic_16F);
 
   display.fillScreen(TFT_BLACK);
@@ -741,6 +748,10 @@ void footorPrint(int col)
 // ==== 画面表示の更新 ====
 void PrintScrren()
 {
+  if (isScreenSaver)
+  {
+    return;
+  }
   int col = TFT_WHITE;
   if (WiFi.status() != WL_CONNECTED)
   {
@@ -887,6 +898,9 @@ void setup()
   Serial.begin(115200);
   pinMode(LEDPIN, OUTPUT);
   digitalWrite(LEDPIN, LOW); // Turn off the LED
+
+  pinMode(BTN_PIN, INPUT_PULLUP);
+
   Serial.begin(115200);
   setupDisplay();
   display.println("Starting Sensor Control...");
@@ -903,23 +917,85 @@ void setup()
   PrintScrren();
   nextTime = millis();
   blinkTime = millis();
+  screenSaveTime = millis();
 }
 
 void loop()
 {
   SerialSelect();
+  if (digitalRead(BTN_PIN) == LOW)
+  {
+    if (isScreenSaver)
+    {
+      isScreenSaver = false;
+      display.setBrightness(80); // 画面を明るくする
+      screenSaveTime = millis(); // スクリーンセーバーのタイマーをリセット
+      nextTime = 0;              // タイマーをリセットしてすぐに画面を更新
+    }
+    else
+    {
+      isScreenSaver = true;
+      display.setBrightness(0); // 画面を暗くする
+    }
+    delay(500); // ボタンのチャタリング防止
+  }
+  if (!isScreenSaver)
+  {
+    if (millis() - screenSaveTime > screenSaver_timing) //
+    {
+      // スクリーンセーバーの処理
+      isScreenSaver = true;
+      // screenSaveTime = millis();
+      display.setBrightness(0); // 画面を暗くする
+    }
+  }
+
   if (WiFi.status() != WL_CONNECTED)
   {
+    if (isScreenSaver)
+    {
+      isScreenSaver = false;
+      display.setBrightness(80); // 画面を明るくする
+      screenSaveTime = millis(); // スクリーンセーバーのタイマーをリセット
+    }
     setupWiFiAndTime();
-    nextTime = millis() - scan_timing; // WiFi再接続後にタイマーをリセット
+    nextTime = 0; // タイマーをリセットしてすぐに画面を更新
   }
   if (millis() - nextTime > scan_timing) //
   {
     readOwnTemp();
     checkChildren();
-    PrintScrren();
+    // 正常か確認
+    bool err = false;
+    for (int i = 0; i < MAX_CLIENTS; i++)
+    {
+      if (children[i].ip.length() == 0)
+        continue;
+      if (children[i].IsConnected >= 3)
+      {
+        // 接続エラーが続いているクライアント
+        err = true;
+        break;
+      }
+      if (children[i].hum >= 35.0f)
+      {
+        // 湿度が高いクライアント
+        err = true;
+        break;
+      }
+    }
+    if (err)
+    {
+      display.setBrightness(100); // 画面を明るくする
+      screenSaveTime = millis();  // スクリーンセーバーのタイマーをリセット
+    }
+    if (!isScreenSaver)
+    {
+      PrintScrren();
+    }
     nextTime = millis();
   }
+  /*
   if (millis() - blinkTime > 1000) // 500ミリ秒ごとにLEDを点滅
   {
     readOwnTemp();
@@ -927,4 +1003,5 @@ void loop()
     blinkLED();
     blinkTime = millis();
   }
+    */
 }

@@ -147,7 +147,7 @@ public:
 
     {                                      // バックライト制御の設定を行います。（必要なければ削除）
       auto cfg = _light_instance.config(); // バックライト設定用の構造体を取得します。
-      cfg.pin_bl = 43;                      // バックライトが接続されているピン番号
+      cfg.pin_bl = 3;                      // バックライトが接続されているピン番号
       cfg.invert = false;                  // バックライトの輝度を反転させる場合 true
       cfg.freq = 44100;                    // バックライトのPWM周波数
       // cfg.freq = 1200;                    // バックライトのPWM周波数
